@@ -1,8 +1,11 @@
-; Description:
-; A multi-purpose tool featuring a key presser, autoclicker, mouse recorder,
-; and a quest macro system with coordinate-based clicking.
+; ======================================================================================================================
+; SCRIPT:           AE Auto v44 - OCR Edition with Debug Window
+; DESCRIPTION:      A multi-purpose tool featuring key presser, autoclicker, mouse recorder, and OCR-based quest macro
+;                   with comprehensive debug logging window.
+; VERSION:          44.OCR.Debug
+; AUTHOR:           Gemini/Assistant
 ;
-; Hotkeys:
+; --- HOTKEYS ---
 ;   PgUp          - Toggles the Key Presser on/off.
 ;   PgDn          - Toggles the Autoclicker on/off.
 ;   F10           - Toggles the Quest Macro on/off.
@@ -13,10 +16,16 @@
 ;   Enter         - Toggles Pause/Resume. Double-press to resync.
 ;   F11           - Configure macro coordinates.
 ;   F12           - Exits the script completely.
+;   F8            - Toggle Debug Window
+; ======================================================================================================================
 
 ; --- SCRIPT SETTINGS ---
 #SingleInstance Force
 CoordMode("Mouse", "Screen")
+SetWorkingDir(A_ScriptDir)
+
+; --- INCLUDE OCR LIBRARY ---
+#Include lib\OCR.ahk
 
 ; --- VERSION CHECK ---
 try {
@@ -71,146 +80,399 @@ global lastRecordedY := 0
 
 ; --- MACRO SYSTEM VARIABLES ---
 global macroStep := 0
-global rejectionStep := 0 ; Added for rejection sequence
-global macroState := "idle" ; idle, running, waiting_for_reset
+global rejectionStep := 0
+global macroState := "idle"
 global lastMacroAction := 0
-global macroWaitTime := 2000 ; Default wait time between actions
+global macroWaitTime := 2000
+global currentSequence := "main"
+global detectedQuestNumber := 0
 
-; Coordinate storage for macro targets - Updated with your exact coordinates
+; --- OCR VARIABLES ---
+global ocrEnabled := false
+global ocrLastResult := ""
+global ocrSearchTimeout := 5000
+global questNumberRegion := {x: 0, y: 0, w: 300, h: 100}
+global gameWindowTitle := "Ashen Empires"
+global ocrInitialized := false
+
+; --- DEBUG WINDOW VARIABLES ---
+global debugWindowVisible := false
+global debugGui := ""
+global debugListView := ""
+global debugMessages := []
+global maxDebugMessages := 500
+
+; Coordinate storage for macro targets
 global coords := Map()
 coords["dtm_npc"] := {x: 1830, y: 1080, name: "DTM NPC"}
-coords["continue_1st"] := {x: 1494, y: 888, name: "1st Continue"}
-coords["continue_2nd"] := {x: 1496, y: 888, name: "2nd Continue"}
-coords["sure_btn"] := {x: 1526, y: 816, name: "Sure!"}
-coords["continue_3rd"] := {x: 1484, y: 882, name: "3rd Continue"}
-
-; Creature selection - Page 1
-coords["show_more_1"] := {x: 1402, y: 708, name: "Show More Creatures (Page 1)"}
-coords["dragons_btn"] := {x: 1532, y: 766, name: "Dragons"}
-coords["kobolds_btn"] := {x: 1510, y: 828, name: "Kobolds"}
-coords["nevermind_1"] := {x: 1394, y: 886, name: "Nevermind (Page 1)"}
-
-; Creature selection - Page 2
-coords["show_more_2"] := {x: 1436, y: 694, name: "Show More Creatures (Page 2)"}
-coords["undead_btn"] := {x: 1516, y: 756, name: "Undead"}
-coords["elementals_btn"] := {x: 1494, y: 826, name: "Elementals"}
-coords["nevermind_2"] := {x: 1386, y: 890, name: "Nevermind (Page 2)"}
-
-; Creature selection - Page 3
-coords["show_more_3"] := {x: 1436, y: 696, name: "Show More Creatures (Page 3)"}
-coords["giants_btn"] := {x: 1518, y: 762, name: "Giants"}
-coords["goblins_btn"] := {x: 1502, y: 824, name: "Goblins"}
-coords["nevermind_3"] := {x: 1396, y: 890, name: "Nevermind (Page 3)"}
-
-; Creature selection - Page 4
-coords["show_more_4"] := {x: 1436, y: 696, name: "Show More Creatures (Page 4)"}
-coords["minotaurs_btn"] := {x: 1500, y: 750, name: "Minotaurs"}
-coords["werewolves_btn"] := {x: 1476, y: 824, name: "Werewolves"}
-coords["nevermind_4"] := {x: 1396, y: 890, name: "Nevermind (Page 4)"}
-
-; Creature selection - Page 5
-coords["show_more_5"] := {x: 1472, y: 686, name: "Show More Creatures (Page 5)"}
-coords["humanoids_btn"] := {x: 1498, y: 756, name: "Humanoids"}
-coords["demons_btn"] := {x: 1510, y: 820, name: "Demons"}
-coords["nevermind_5"] := {x: 1388, y: 892, name: "Nevermind (Page 5)"}
-
-; Creature selection - Page 6
-coords["show_more_6"] := {x: 1420, y: 692, name: "Show More Creatures (Page 6)"}
-coords["insects_btn"] := {x: 1508, y: 760, name: "Insects"}
-coords["wyverns_btn"] := {x: 1496, y: 828, name: "Wyverns"}
-coords["nevermind_6"] := {x: 1416, y: 886, name: "Nevermind (Page 6)"}
-
-; Creature selection - Page 7
-coords["show_more_7"] := {x: 1396, y: 694, name: "Show More Creatures (Page 7)"}
-coords["vermins_btn"] := {x: 1508, y: 756, name: "Vermins"}
-coords["sea_creatures_btn"] := {x: 1478, y: 822, name: "Sea Creatures"}
-coords["nevermind_7"] := {x: 1402, y: 890, name: "Nevermind (Page 7)"}
-
-; Creature selection - Page 8
-coords["animals_btn"] := {x: 1530, y: 758, name: "Animals"}
-coords["fungoids_btn"] := {x: 1488, y: 830, name: "Fungoids"}
-coords["nevermind_8"] := {x: 1390, y: 890, name: "Nevermind (Page 8)"}
-
-; After creature selection
-coords["continue_after_creature"] := {x: 1486, y: 886, name: "Continue After Creature"}
-coords["extra_challenge_btn"] := {x: 1354, y: 822, name: "Yes I Need Extra Challenge"}
-
-; Rejection sequence
-coords["dtm_reject"] := {x: 1818, y: 1086, name: "DTM NPC (Reject)"}
-coords["continue_reject_1st"] := {x: 1478, y: 882, name: "1st Continue (Reject)"}
-coords["continue_reject_2nd"] := {x: 1482, y: 886, name: "2nd Continue (Reject)"}
-coords["not_strong_btn"] := {x: 1354, y: 820, name: "Yes I Am Not Strong Enough"}
-coords["continue_reject_3rd"] := {x: 1482, y: 890, name: "3rd Continue (Reject)"}
-coords["continue_reject_4th"] := {x: 1482, y: 890, name: "4th Continue (Reject)"}
-
-; All creature types organized by page with their show_more buttons
-global creatureData := Map()
-creatureData[1] := {creatures: ["dragons_btn", "kobolds_btn"], show_more: "show_more_1"}
-creatureData[2] := {creatures: ["undead_btn", "elementals_btn"], show_more: "show_more_2"}
-creatureData[3] := {creatures: ["giants_btn", "goblins_btn"], show_more: "show_more_3"}
-creatureData[4] := {creatures: ["minotaurs_btn", "werewolves_btn"], show_more: "show_more_4"}
-creatureData[5] := {creatures: ["humanoids_btn", "demons_btn"], show_more: "show_more_5"}
-creatureData[6] := {creatures: ["insects_btn", "wyverns_btn"], show_more: "show_more_6"}
-creatureData[7] := {creatures: ["vermins_btn", "sea_creatures_btn"], show_more: "show_more_7"}
-creatureData[8] := {creatures: ["animals_btn", "fungoids_btn"], show_more: ""}  ; Page 8 has no show_more
 
 ; Creature selection settings
-global selectedCreature := "dragons_btn" ; Default creature
+global selectedCreature := "dragons_btn"
 global selectedCreaturePage := 1
 global selectedCreatureName := "Dragons"
 
 global currentCreaturePage := 1
 global currentCreatureIndex := 1
-global questAcceptanceTimeout := 10000 ; 10 seconds to decide if quest is good
-global questState := "seeking" ; seeking, waiting_for_decision, rejecting
-global baseClickDelay := 350 ; Base delay between clicks in milliseconds
-global humanizeClicks := true ; Enable humanization features
+global questAcceptanceTimeout := 10000
+global questState := "seeking"
+global baseClickDelay := 350
+global humanizeClicks := true
 
-; OCR and Text Detection Variables
-global ocrEnabled := false
-global killCountRegion := {x: 0, y: 0, w: 200, h: 50}  ; Region to check for kill count
-global continueButtonRegion := {x: 0, y: 0, w: 200, h: 50}  ; Region for continue button
-global lastDetectedKills := 0
-global autoClickContinue := false
-
-; Macro sequence configuration - Updated with new coordinates
+; Macro sequences
 global macroSequence := [
-    {action: "click", target: "dtm_npc", wait: 1500, description: "Click DTM NPC"},
-    {action: "click", target: "continue_1st", wait: 1000, description: "Click 1st Continue"},
-    {action: "click", target: "continue_2nd", wait: 1000, description: "Click 2nd Continue"},
-    {action: "click", target: "sure_btn", wait: 1000, description: "Click Sure!"},
-    {action: "click", target: "continue_3rd", wait: 1500, description: "Click 3rd Continue to creatures"},
-    {action: "navigate_to_creature", wait: 1000, description: "Navigate to selected creature"},
-    {action: "select_chosen_creature", wait: 2000, description: "Select chosen creature type"},
-    {action: "click", target: "continue_after_creature", wait: 1000, description: "Click Continue after creature"},
-    {action: "click", target: "extra_challenge_btn", wait: 3000, description: "Click Yes I Need Extra Challenge"},
-    {action: "wait_for_decision", wait: questAcceptanceTimeout, description: "Waiting for quest decision..."},
-    {action: "check_continue_or_reject", description: "Continue with quest or reject and retry"}
+    {action: "click_npc", wait: 1500, description: "Click DTM NPC"},
+    {action: "check_quest_state", wait: 500, description: "Checking quest state..."},
+    {action: "branch_sequence", wait: 100, description: "Branching to appropriate sequence"}
 ]
 
-; Rejection sequence when quest is not good enough - Updated coordinates
-global rejectionSequence := [
-    {action: "click", target: "dtm_reject", wait: 1000, description: "Click DTM NPC to reject"},
-    {action: "click", target: "continue_reject_1st", wait: 1000, description: "Click 1st Continue (Reject)"},
-    {action: "click", target: "continue_reject_2nd", wait: 1000, description: "Click 2nd Continue (Reject)"},
-    {action: "click", target: "not_strong_btn", wait: 1000, description: "Click Yes I Am Not Strong Enough"},
-    {action: "click", target: "continue_reject_3rd", wait: 1000, description: "Click 3rd Continue (Reject)"},
-    {action: "click", target: "continue_reject_4th", wait: 1500, description: "Click 4th Continue to cancel quest"},
-    {action: "restart_same_creature", description: "Restart with same creature"}
+global normalQuestSequence := [
+    {action: "ocr_click", text: "Continue", wait: 1000, description: "Click Continue"},
+    {action: "ocr_click", text: "Continue", wait: 1000, description: "Click Continue (2)"},
+    {action: "ocr_click", text: "Sure!", wait: 1000, description: "Click Sure!"},
+    {action: "ocr_click", text: "Continue", wait: 1500, description: "Click Continue (3)"},
+    {action: "navigate_to_creature_ocr", wait: 1000, description: "Navigate to creature"},
+    {action: "select_creature_ocr", wait: 2000, description: "Select creature"},
+    {action: "ocr_click", text: "Continue", wait: 1000, description: "Click Continue after creature"},
+    {action: "ocr_click", text: "Yes I Need Extra Challenge", wait: 3000, description: "Click Extra Challenge"},
+    {action: "check_quest_number", wait: 1000, description: "Checking quest value..."},
+    {action: "decide_quest", wait: 100, description: "Deciding to keep or reject..."}
 ]
+
+global rejectionSequence := [
+    {action: "ocr_click", text: "Continue", wait: 1000, description: "Click Continue (Reject 1)"},
+    {action: "ocr_click", text: "Continue", wait: 1000, description: "Click Continue (Reject 2)"},
+    {action: "ocr_click", text: "Yes I Am Not Strong Enough", wait: 1000, description: "Click Not Strong Enough"},
+    {action: "ocr_click", text: "Continue", wait: 1000, description: "Click Continue (Reject 3)"},
+    {action: "ocr_click", text: "Continue", wait: 1500, description: "Click Continue (Reject 4)"},
+    {action: "restart_with_normal", description: "Restarting with normal sequence..."}
+]
+
+; --- DEBUG FUNCTIONS ---
+DebugLog(category, message, level := "INFO") {
+    global debugMessages, debugListView, maxDebugMessages
+    
+    timestamp := A_Now
+    timestamp := SubStr(timestamp, 9, 2) . ":" . SubStr(timestamp, 11, 2) . ":" . SubStr(timestamp, 13, 2) ; Extract HH:MM:SS
+    
+    ; Add to messages array
+    msgObj := {
+        time: timestamp,
+        category: category,
+        message: message,
+        level: level
+    }
+    
+    debugMessages.Push(msgObj)
+    
+    ; Limit message count
+    if (debugMessages.Length > maxDebugMessages) {
+        debugMessages.RemoveAt(1)
+    }
+    
+    ; Update ListView if debug window is open
+    if (debugWindowVisible && IsObject(debugListView)) {
+        ; Determine icon based on level
+        iconNum := 1
+        switch level {
+            case "ERROR": iconNum := 2
+            case "WARNING": iconNum := 3
+            case "SUCCESS": iconNum := 4
+            case "OCR": iconNum := 5
+        }
+        
+        ; Add to ListView
+        debugListView.Add("Icon" . iconNum, timestamp, category, message, level)
+        
+        ; Auto-scroll to bottom
+        debugListView.Modify(debugListView.GetCount(), "Vis")
+    }
+}
+
+CreateDebugWindow() {
+    global debugGui, debugListView, debugWindowVisible
+    
+    if (IsObject(debugGui)) {
+        debugGui.Show()
+        debugWindowVisible := true
+        return
+    }
+    
+    debugGui := Gui("+Resize", "AE Auto Debug Console")
+    debugGui.BackColor := "1a1a1a"
+    debugGui.SetFont("s9 cFFFFFF", "Consolas")
+    
+    ; Create toolbar
+    debugGui.Add("Text", "x10 y10 w100 cLime", "Debug Console")
+    clearBtn := debugGui.Add("Button", "x600 y5 w80 h25", "Clear")
+    clearBtn.OnEvent("Click", (*) => debugListView.Delete())
+    
+    ; Create ListView with columns
+    debugListView := debugGui.Add("ListView", "x10 y35 w770 h400 Background0a0a0a cWhite Grid", ["Time", "Category", "Message", "Level"])
+    
+    ; Set column widths
+    debugListView.ModifyCol(1, 80)   ; Time
+    debugListView.ModifyCol(2, 100)  ; Category
+    debugListView.ModifyCol(3, 500)  ; Message
+    debugListView.ModifyCol(4, 70)   ; Level
+    
+    ; Create ImageList for icons
+    IL := IL_Create(5)
+    IL_Add(IL, "shell32.dll", 78)   ; 1: Info
+    IL_Add(IL, "shell32.dll", 110)  ; 2: Error
+    IL_Add(IL, "shell32.dll", 84)   ; 3: Warning
+    IL_Add(IL, "shell32.dll", 297)  ; 4: Success
+    IL_Add(IL, "shell32.dll", 23)   ; 5: OCR
+    debugListView.SetImageList(IL)
+    
+    ; Add filter controls
+    debugGui.Add("Text", "x10 y445 w50", "Filter:")
+    filterEdit := debugGui.Add("Edit", "x65 y443 w200")
+    filterBtn := debugGui.Add("Button", "x270 y442 w60 h22", "Apply")
+    
+    filterBtn.OnEvent("Click", (*) => FilterDebugMessages(filterEdit.Text))
+    
+    ; Add existing messages
+    for msg in debugMessages {
+        iconNum := 1
+        switch msg.level {
+            case "ERROR": iconNum := 2
+            case "WARNING": iconNum := 3
+            case "SUCCESS": iconNum := 4
+            case "OCR": iconNum := 5
+        }
+        debugListView.Add("Icon" . iconNum, msg.time, msg.category, msg.message, msg.level)
+    }
+    
+    debugGui.OnEvent("Close", (*) => (debugWindowVisible := false))
+    debugGui.OnEvent("Size", DebugWindowResize)
+    
+    debugGui.Show("w800 h480 x" . (A_ScreenWidth - 820) . " y20")
+    debugWindowVisible := true
+    
+    DebugLog("SYSTEM", "Debug window opened", "INFO")
+}
+
+DebugWindowResize(GuiObj, MinMax, Width, Height) {
+    global debugListView
+    if MinMax = -1
+        return
+    debugListView.Move(, , Width - 30, Height - 80)
+}
+
+FilterDebugMessages(filterText) {
+    global debugListView, debugMessages
+    debugListView.Delete()
+    
+    for msg in debugMessages {
+        if (filterText = "" || InStr(msg.message, filterText) || InStr(msg.category, filterText)) {
+            iconNum := 1
+            switch msg.level {
+                case "ERROR": iconNum := 2
+                case "WARNING": iconNum := 3
+                case "SUCCESS": iconNum := 4
+                case "OCR": iconNum := 5
+            }
+            debugListView.Add("Icon" . iconNum, msg.time, msg.category, msg.message, msg.level)
+        }
+    }
+}
+
+; --- OCR WRAPPER FUNCTIONS ---
+InitializeOCR() {
+    global ocrInitialized
+    try {
+        DebugLog("OCR", "Initializing OCR system...", "INFO")
+        result := OCR.FromDesktop()
+        ocrInitialized := true
+        DebugLog("OCR", "OCR initialized successfully", "SUCCESS")
+        return true
+    } catch as e {
+        DebugLog("OCR", "OCR initialization failed: " . e.Message, "ERROR")
+        MsgBox("OCR initialization failed. Make sure you have Windows 10/11 with OCR language packs installed.`n`nError: " . e.Message, "OCR Error", 48)
+        return false
+    }
+}
+
+FindAndClickButton(buttonText, timeout := 5000) {
+    global gameWindowTitle, ocrLastResult
+    startTime := A_TickCount
+    
+    DebugLog("OCR", "Searching for button: " . buttonText, "INFO")
+    
+    Loop {
+        try {
+            ; Capture game window
+            result := OCR.FromWindow(gameWindowTitle)
+            ocrLastResult := result.Text
+            
+            ; Log the captured text (first 200 chars)
+            DebugLog("OCR", "Captured text: " . SubStr(result.Text, 1, 200) . "...", "OCR")
+            
+            ; Search for the button text
+            found := result.FindString(buttonText, {CaseSense: false})
+            if (found) {
+                ; Add small random offset for human-like clicking
+                offsetX := Random(-5, 5)
+                offsetY := Random(-5, 5)
+                
+                ; Click the center of the found text
+                found.Click()
+                totalClicks++
+                
+                DebugLog("OCR", "Found and clicked: " . buttonText . " at " . found.x . "," . found.y, "SUCCESS")
+                MacroActionText.Text := "Clicked: " . buttonText
+                return true
+            }
+        } catch as e {
+            DebugLog("OCR", "OCR error: " . e.Message, "ERROR")
+        }
+        
+        ; Check timeout
+        if (A_TickCount - startTime > timeout) {
+            DebugLog("OCR", "Timeout finding button: " . buttonText, "WARNING")
+            MacroActionText.Text := "Timeout finding: " . buttonText
+            return false
+        }
+        
+        Sleep(100)
+    }
+}
+
+ReadQuestNumber(region := "") {
+    global questNumberRegion, gameWindowTitle
+    
+    if (!region) {
+        region := questNumberRegion
+    }
+    
+    DebugLog("OCR", "Reading quest number from region: " . region.x . "," . region.y . " " . region.w . "x" . region.h, "INFO")
+    
+    try {
+        ; Capture specific region of game window
+        result := OCR.FromWindow(gameWindowTitle, {x: region.x, y: region.y, w: region.w, h: region.h})
+        
+        ; Look for numbers
+        text := result.Text
+        DebugLog("OCR", "Quest region text: " . text, "OCR")
+        
+        ; Extract numbers using regex
+        if (RegExMatch(text, "(\d+)", &match)) {
+            number := Integer(match[1])
+            DebugLog("OCR", "Found quest number: " . number, "SUCCESS")
+            return number
+        }
+    } catch as e {
+        DebugLog("OCR", "Failed to read quest number: " . e.Message, "ERROR")
+    }
+    
+    DebugLog("OCR", "No quest number found", "WARNING")
+    return 0
+}
+
+CheckQuestState() {
+    global gameWindowTitle, ocrLastResult
+    
+    DebugLog("MACRO", "Checking quest state...", "INFO")
+    
+    try {
+        result := OCR.FromWindow(gameWindowTitle)
+        text := result.Text
+        ocrLastResult := text
+        
+        ; Log first 300 chars of captured text
+        DebugLog("OCR", "Full screen text: " . SubStr(text, 1, 300) . "...", "OCR")
+        
+        ; Check for indicators that we already have a quest
+        if (InStr(text, "Yes I Am Not Strong Enough") || InStr(text, "not strong enough")) {
+            DebugLog("MACRO", "Detected existing quest (rejection options found)", "SUCCESS")
+            return "has_quest"
+        }
+        
+        ; Check for fresh quest dialog
+        if (InStr(text, "Sure!") || InStr(text, "continue")) {
+            DebugLog("MACRO", "Detected no existing quest (normal options found)", "SUCCESS")
+            return "no_quest"
+        }
+        
+    } catch as e {
+        DebugLog("OCR", "Quest state check failed: " . e.Message, "ERROR")
+    }
+    
+    DebugLog("MACRO", "Could not determine quest state", "WARNING")
+    return "unknown"
+}
+
+FindAndClickCreature(creatureName) {
+    DebugLog("MACRO", "Searching for creature: " . creatureName, "INFO")
+    return FindAndClickButton(creatureName, 3000)
+}
+
+NavigateToCreatureOCR() {
+    global selectedCreaturePage
+    clicksNeeded := selectedCreaturePage - 1
+    
+    DebugLog("MACRO", "Navigating to creature page " . selectedCreaturePage . " (needs " . clicksNeeded . " clicks)", "INFO")
+    
+    Loop clicksNeeded {
+        if (!FindAndClickButton("Show More", 3000)) {
+            DebugLog("MACRO", "Failed to find Show More button on page " . A_Index, "ERROR")
+            return false
+        }
+        Sleep(800)
+    }
+    return true
+}
+
+SetQuestNumberRegion() {
+    global questNumberRegion
+    
+    DebugLog("SETTINGS", "Setting quest number region...", "INFO")
+    
+    MsgBox("Position your mouse at the TOP-LEFT of where quest numbers appear and press OK", "Set Region", 0)
+    MouseGetPos(&x1, &y1)
+    
+    MsgBox("Position your mouse at the BOTTOM-RIGHT of where quest numbers appear and press OK", "Set Region", 0)
+    MouseGetPos(&x2, &y2)
+    
+    questNumberRegion.x := x1
+    questNumberRegion.y := y1
+    questNumberRegion.w := x2 - x1
+    questNumberRegion.h := y2 - y1
+    
+    DebugLog("SETTINGS", "Quest number region set to: " . x1 . "," . y1 . " - " . x2 . "," . y2, "SUCCESS")
+    MsgBox("Quest number region set to: " . x1 . "," . y1 . " - " . x2 . "," . y2, "Region Set", 64)
+}
+
+TestOCR(*) {
+    DebugLog("OCR", "Starting OCR test...", "INFO")
+    
+    if (!ocrInitialized && !InitializeOCR()) {
+        return
+    }
+    
+    try {
+        result := OCR.FromWindow(gameWindowTitle)
+        fullText := result.Text
+        DebugLog("OCR", "Full OCR result: " . fullText, "OCR")
+        MsgBox("OCR Test Result:`n`n" . SubStr(fullText, 1, 500) . "...", "OCR Test", 64)
+    } catch as e {
+        DebugLog("OCR", "OCR test failed: " . e.Message, "ERROR")
+        MsgBox("OCR test failed: " . e.Message, "Error", 48)
+    }
+}
 
 ; --- SOUND FUNCTIONS ---
 PlaySound(type := "info") {
     try {
         switch type {
             case "error":
-                SoundPlay("*16") ; SystemHand
+                SoundPlay("*16")
             case "success":
-                SoundPlay("*64") ; SystemDefault / Asterisk
+                SoundPlay("*64")
             case "warning":
-                SoundPlay("*48") ; SystemExclamation
+                SoundPlay("*48")
             case "info":
-                SoundPlay("*64") ; SystemDefault / Asterisk
+                SoundPlay("*64")
             case "resync":
                 SoundPlay("*64")
                 Sleep(60)
@@ -311,18 +573,20 @@ HumanizeLabel.Visible := false
 global HumanizeCheckbox := MyGui.Add("Checkbox", "x110 y450 w100", "Enable")
 HumanizeCheckbox.Visible := false
 HumanizeCheckbox.Value := true
+
 ; OCR Options
 global OCRLabel := MyGui.Add("Text", "x10 y475 cSilver", "Text Detection:")
 OCRLabel.Visible := false
 global OCRCheckbox := MyGui.Add("Checkbox", "x110 y475 w100", "Enable OCR")
 OCRCheckbox.Visible := false
-global SetKillRegionBtn := MyGui.Add("Button", "x10 y500 w125 h20", "Set Kill Region")
-SetKillRegionBtn.Visible := false
-global AutoContinueCheck := MyGui.Add("Checkbox", "x145 y500 w120", "Auto-Continue")
-AutoContinueCheck.Visible := false
+global OCRTestBtn := MyGui.Add("Button", "x10 y500 w125 h20", "Test OCR")
+OCRTestBtn.Visible := false
+global SetQuestRegionBtn := MyGui.Add("Button", "x145 y500 w120 h20", "Set Quest Region")
+SetQuestRegionBtn.Visible := false
+global DebugWindowBtn := MyGui.Add("Button", "x10 y525 w255 h25", "Toggle Debug Window (F8)")
+DebugWindowBtn.Visible := false
 
 ; --- HOTKEYS SECTION ---
-
 global HotkeysTitle := MyGui.Add("Text", "x10 y165 w260 Center cLime", "--- HOTKEYS ---")
 HotkeysTitle.SetFont("s10", "Verdana")
 HotkeysTitle.Visible := false
@@ -335,13 +599,13 @@ HotkeyTexts.Push(MyGui.Add("Text", "x10 y270 cSilver", "Home: Record Mouse"))
 HotkeyTexts.Push(MyGui.Add("Text", "x10 y290 cSilver", "End: Playback Mouse"))
 HotkeyTexts.Push(MyGui.Add("Text", "x10 y310 cSilver", "Middle Mouse: F1+click"))
 HotkeyTexts.Push(MyGui.Add("Text", "x10 y330 cSilver", "Enter: Pause (2x = Resync)"))
-HotkeyTexts.Push(MyGui.Add("Text", "x10 y350 cSilver", "F12: Exit Program"))
+HotkeyTexts.Push(MyGui.Add("Text", "x10 y350 cSilver", "F8: Toggle Debug Window"))
+HotkeyTexts.Push(MyGui.Add("Text", "x10 y370 cSilver", "F12: Exit Program"))
 for text in HotkeyTexts {
     text.Visible := false
 }
 
 ; --- STATISTICS SECTION ---
-
 global StatsTitle := MyGui.Add("Text", "x10 y165 w260 Center cLime", "--- STATISTICS ---")
 StatsTitle.SetFont("s10", "Verdana")
 StatsTitle.Visible := false
@@ -374,8 +638,9 @@ CreatureChangeBtn.OnEvent("Click", ShowCreatureSelector)
 HumanizeCheckbox.OnEvent("Click", UpdateHumanization)
 ConfigCoordsBtn.OnEvent("Click", ShowCoordinateConfig)
 OCRCheckbox.OnEvent("Click", ToggleOCR)
-SetKillRegionBtn.OnEvent("Click", SetKillCountRegion)
-AutoContinueCheck.OnEvent("Click", ToggleAutoContinue)
+OCRTestBtn.OnEvent("Click", TestOCR)
+SetQuestRegionBtn.OnEvent("Click", (*) => SetQuestNumberRegion())
+DebugWindowBtn.OnEvent("Click", (*) => ToggleDebugWindow())
 ResetStatsBtn.OnEvent("Click", ResetStats)
 ExportStatsBtn.OnEvent("Click", ExportStats)
 MyGui.OnEvent("Close", (*) => ExitApp())
@@ -389,12 +654,15 @@ SetTimer(UpdateGuiDisplay, 250)
 
 ; Store the active window before showing our GUI
 global gameWindow := WinExist("A")
-global gameTitle := "Ashen Empires"  ; Specific game title for better targeting
+global gameTitle := "Ashen Empires"
+
+; Initialize debug system
+DebugLog("SYSTEM", "AE Auto v44 OCR Edition started", "SUCCESS")
+DebugLog("SYSTEM", "Debug logging initialized", "INFO")
 
 ; Function to restore focus to game
 RestoreGameFocus() {
     global gameWindow, gameTitle
-    ; Try multiple methods to keep game active
     try {
         if WinExist(gameTitle) {
             WinActivate(gameTitle)
@@ -407,22 +675,18 @@ RestoreGameFocus() {
 ; Enhanced GUI creation for popups that won't minimize games
 CreateNoStealFocusGui(title) {
     global gameTitle
-    ; Create GUI with special properties to prevent game minimizing
     newGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x08000000", title)
     
-    ; Try to find the game window and set it as owner
     gameHwnd := WinExist(gameTitle)
     if (!gameHwnd) {
-        gameHwnd := WinExist("A") ; Use active window if game not found
+        gameHwnd := WinExist("A")
     }
     
-    ; Set the game window as parent to prevent focus stealing
     if (gameHwnd) {
         try {
-            ; Use SetWindowLongPtr for 64-bit compatibility
-            if (A_PtrSize = 8) { ; 64-bit
+            if (A_PtrSize = 8) {
                 DllCall("SetWindowLongPtr", "Ptr", newGui.Hwnd, "Int", -8, "Ptr", gameHwnd)
-            } else { ; 32-bit
+            } else {
                 DllCall("SetWindowLong", "Ptr", newGui.Hwnd, "Int", -8, "Ptr", gameHwnd)
             }
         }
@@ -442,6 +706,7 @@ MButton::F1ClickMacro()
 ~Enter::HandleEnterKey()
 F11::ShowCoordinateConfig()
 F12::ExitApp
+F8::ToggleDebugWindow()
 
 ; Context-sensitive hotkey for closing sub-GUIs
 #HotIf WinActive("Select Creature") or WinActive("Configure Macro Coordinates")
@@ -454,9 +719,22 @@ Escape:: {
         CloseConfigGui()
     }
 }
-#HotIf ; Turn off context-sensitivity
+#HotIf
 
 ; --- CORE FUNCTIONS ---
+ToggleDebugWindow() {
+    global debugWindowVisible
+    if (debugWindowVisible) {
+        if (IsObject(debugGui)) {
+            debugGui.Hide()
+            debugWindowVisible := false
+            DebugLog("SYSTEM", "Debug window hidden", "INFO")
+        }
+    } else {
+        CreateDebugWindow()
+    }
+}
+
 HandleEnterKey() {
     global
     local currentTime := A_TickCount
@@ -467,6 +745,7 @@ HandleEnterKey() {
             ResyncText.Visible := true
             SetTimer(() => ResyncText.Visible := false, -500)
             PlaySound("resync")
+            DebugLog("SYSTEM", "Resync performed", "SUCCESS")
             if (isKeyPressToggled) {
                 SetTimer(PressTheKey, -CurrentKeyDelay)
             }
@@ -480,6 +759,7 @@ HandleEnterKey() {
             ResyncText.Visible := true
             SetTimer(() => ResyncText.Visible := false, -500)
             PlaySound("resync")
+            DebugLog("SYSTEM", "Double Enter pressed (already unpaused)", "INFO")
         }
         lastEnterPress := 0
         return
@@ -493,11 +773,13 @@ TogglePause() {
     isPaused := !isPaused
     PauseStatusText.Visible := isPaused
     if (isPaused) {
+        DebugLog("SYSTEM", "Script paused", "WARNING")
         PlaySound("warning")
         SetTimer(PressTheKey, 0)
         SetTimer(ClickTheMouse, 0)
         SetTimer(RunMacro, 0)
     } else {
+        DebugLog("SYSTEM", "Script resumed", "SUCCESS")
         PlaySound("info")
         if (isKeyPressToggled) {
             SetTimer(PressTheKey, -CurrentKeyDelay)
@@ -563,17 +845,17 @@ HideOtherSections(except) {
 
 ShowOptionsSection() {
     global
-    controls := [OptionsTitle, KeyDelayLabel, KeyDelaySlider, KeyDelayText, ClickDelayLabel, ClickDelaySlider, ClickDelayText, TransLabel, TransSlider, TransText, MacroWaitLabel, MacroWaitSlider, MacroWaitText, CreatureLabel, CreatureCurrentText, CreatureChangeBtn, HumanizeLabel, HumanizeCheckbox, ConfigCoordsBtn, OCRLabel, OCRCheckbox, SetKillRegionBtn, AutoContinueCheck]
+    controls := [OptionsTitle, KeyDelayLabel, KeyDelaySlider, KeyDelayText, ClickDelayLabel, ClickDelaySlider, ClickDelayText, TransLabel, TransSlider, TransText, MacroWaitLabel, MacroWaitSlider, MacroWaitText, CreatureLabel, CreatureCurrentText, CreatureChangeBtn, HumanizeLabel, HumanizeCheckbox, ConfigCoordsBtn, OCRLabel, OCRCheckbox, OCRTestBtn, SetQuestRegionBtn, DebugWindowBtn]
     for control in controls {
         control.Visible := true
     }
-    MyGui.Move(,, 280, 530)
+    MyGui.Move(,, 280, 560)
     OptionsButton.Text := "Hide Options"
 }
 
 HideOptionsSection() {
     global
-    controls := [OptionsTitle, KeyDelayLabel, KeyDelaySlider, KeyDelayText, ClickDelayLabel, ClickDelaySlider, ClickDelayText, TransLabel, TransSlider, TransText, MacroWaitLabel, MacroWaitSlider, MacroWaitText, CreatureLabel, CreatureCurrentText, CreatureChangeBtn, HumanizeLabel, HumanizeCheckbox, ConfigCoordsBtn, OCRLabel, OCRCheckbox, SetKillRegionBtn, AutoContinueCheck]
+    controls := [OptionsTitle, KeyDelayLabel, KeyDelaySlider, KeyDelayText, ClickDelayLabel, ClickDelaySlider, ClickDelayText, TransLabel, TransSlider, TransText, MacroWaitLabel, MacroWaitSlider, MacroWaitText, CreatureLabel, CreatureCurrentText, CreatureChangeBtn, HumanizeLabel, HumanizeCheckbox, ConfigCoordsBtn, OCRLabel, OCRCheckbox, OCRTestBtn, SetQuestRegionBtn, DebugWindowBtn]
     for control in controls {
         control.Visible := false
     }
@@ -589,7 +871,7 @@ ShowHotkeysSection() {
     for text in HotkeyTexts {
         text.Visible := true
     }
-    MyGui.Move(,, 280, 380)
+    MyGui.Move(,, 280, 400)
     HotkeysButton.Text := "Hide Hotkeys"
 }
 
@@ -635,6 +917,7 @@ PressTheKey() {
     }
     Send("{``}")
     totalKeyPresses++
+    DebugLog("KEYPRESS", "Sent backtick key", "INFO")
     SetTimer(PressTheKey, -CurrentKeyDelay)
 }
 
@@ -645,19 +928,21 @@ ClickTheMouse() {
     }
     Click()
     totalClicks++
+    DebugLog("AUTOCLICK", "Clicked at cursor position", "INFO")
     SetTimer(ClickTheMouse, -CurrentClickDelay)
 }
 
 F1ClickMacro() {
-    global totalClicks  ; Added missing global declaration
+    global totalClicks
     Send("{F1}")
     Sleep(550)
     MouseGetPos(&x, &y)
     HumanizedClick(x, y)
     totalClicks++
+    DebugLog("MACRO", "F1+Click macro executed", "INFO")
 }
 
-; --- MOUSE RECORDING (Simplified) ---
+; --- MOUSE RECORDING ---
 ToggleMouseRecording(*) {
     global
     if (isPlayingBack) {
@@ -667,9 +952,11 @@ ToggleMouseRecording(*) {
     if (isRecording) {
         recordedActions := []
         PlaySound("success")
+        DebugLog("RECORDER", "Mouse recording started", "SUCCESS")
     } else {
         PlaySound("info")
         totalRecordings++
+        DebugLog("RECORDER", "Mouse recording stopped (" . recordedActions.Length . " actions)", "INFO")
     }
 }
 
@@ -682,12 +969,14 @@ TogglePlayback() {
         isPlayingBack := true
         totalPlaybacks++
         SetTimer(StopPlayback, -5000)
+        DebugLog("RECORDER", "Playback started", "INFO")
     }
 }
 
 StopPlayback() {
     global
     isPlayingBack := false
+    DebugLog("RECORDER", "Playback stopped", "INFO")
 }
 
 ; --- UPDATE FUNCTIONS ---
@@ -695,12 +984,14 @@ UpdateKeyDelay(SliderObj, *) {
     global
     CurrentKeyDelay := SliderObj.Value
     KeyDelayText.Text := CurrentKeyDelay . "ms"
+    DebugLog("SETTINGS", "Key delay changed to " . CurrentKeyDelay . "ms", "INFO")
 }
 
 UpdateClickDelay(SliderObj, *) {
     global
     CurrentClickDelay := SliderObj.Value
     ClickDelayText.Text := CurrentClickDelay . "ms"
+    DebugLog("SETTINGS", "Click delay changed to " . CurrentClickDelay . "ms", "INFO")
 }
 
 UpdateTransparency(SliderObj, *) {
@@ -708,19 +999,21 @@ UpdateTransparency(SliderObj, *) {
     CurrentTransparency := SliderObj.Value
     TransText.Text := CurrentTransparency
     WinSetTransparent(CurrentTransparency, MyGui.Hwnd)
+    DebugLog("SETTINGS", "GUI transparency changed to " . CurrentTransparency, "INFO")
 }
 
 UpdateMacroWait(SliderObj, *) {
     global
     macroWaitTime := SliderObj.Value
     MacroWaitText.Text := macroWaitTime . "ms"
+    DebugLog("SETTINGS", "Macro wait time changed to " . macroWaitTime . "ms", "INFO")
 }
 
 UpdateGuiDisplay() {
     global
     if (isKeyPressToggled) {
         KeypressStatusText.SetFont("cLime")
-        local elapsed := FormatTime((A_TickCount - keyPressStartTime) / 1000)
+        local elapsed := FormatElapsedTime((A_TickCount - keyPressStartTime) / 1000)
         KeypressStatusText.Text := "Keypress: ON (" . elapsed . ")"
     } else {
         KeypressStatusText.SetFont("cWhite")
@@ -728,7 +1021,7 @@ UpdateGuiDisplay() {
     }
     if (isClickerToggled) {
         ClickerStatusText.SetFont("cLime")
-        local elapsed := FormatTime((A_TickCount - clickerStartTime) / 1000)
+        local elapsed := FormatElapsedTime((A_TickCount - clickerStartTime) / 1000)
         ClickerStatusText.Text := "Autoclick: ON (" . elapsed . ")"
     } else {
         ClickerStatusText.SetFont("cWhite")
@@ -740,7 +1033,7 @@ UpdateGuiDisplay() {
             MacroStatusText.Text := "Quest Macro: Awaiting Decision"
         } else {
             MacroStatusText.SetFont("cLime")
-            local elapsed := FormatTime((A_TickCount - macroStartTime) / 1000)
+            local elapsed := FormatElapsedTime((A_TickCount - macroStartTime) / 1000)
             MacroStatusText.Text := "Quest Macro: ON (" . elapsed . ")"
         }
     } else {
@@ -759,7 +1052,7 @@ UpdateGuiDisplay() {
     }
     if (showingStats) {
         sessionTime := (A_TickCount - sessionStartTime) / 1000
-        SessionTimeText.Text := "Session Time: " . FormatTime(sessionTime)
+        SessionTimeText.Text := "Session Time: " . FormatElapsedTime(sessionTime)
         TotalClicksText.Text := "Total Clicks: " . totalClicks
         TotalKeysText.Text := "Keys Pressed: " . totalKeyPresses
         MacroRunsText.Text := "Macro Runs: " . totalMacroRuns
@@ -768,8 +1061,8 @@ UpdateGuiDisplay() {
     }
     if (ocrEnabled && isMacroToggled) {
         KillCountText.Visible := true
-        if (lastDetectedKills > 0) {
-            KillCountText.Text := "Kills Remaining: " . lastDetectedKills
+        if (detectedQuestNumber > 0) {
+            KillCountText.Text := "Quest Kills: " . detectedQuestNumber
             KillCountText.SetFont("cLime")
         } else {
             KillCountText.Text := "Kills: Detecting..."
@@ -780,7 +1073,7 @@ UpdateGuiDisplay() {
     }
 }
 
-FormatTime(totalSeconds) {
+FormatElapsedTime(totalSeconds) {
     hours := Floor(totalSeconds / 3600)
     minutes := Floor(Mod(totalSeconds, 3600) / 60)
     seconds := Floor(Mod(totalSeconds, 60))
@@ -806,6 +1099,7 @@ ResetStats(*) {
         sessionStartTime := A_TickCount
         previousActionRuntime := "N/A"
         PlaySound("error")
+        DebugLog("SYSTEM", "Statistics reset", "WARNING")
     }
 }
 
@@ -813,7 +1107,7 @@ ExportStats(*) {
     global
     sessionTime := (A_TickCount - sessionStartTime) / 1000
     statsText := "=== AutoHotkey Multi-Tool Statistics ===`n`n"
-    statsText .= "Session Time: " . FormatTime(sessionTime) . "`n"
+    statsText .= "Session Time: " . FormatElapsedTime(sessionTime) . "`n"
     statsText .= "Total Clicks: " . totalClicks . "`n"
     statsText .= "Total Keys Pressed: " . totalKeyPresses . "`n"
     statsText .= "Total Macro Runs: " . totalMacroRuns . "`n"
@@ -822,18 +1116,17 @@ ExportStats(*) {
     statsText .= "Current Settings:`n"
     statsText .= "- Key Delay: " . CurrentKeyDelay . "ms`n"
     statsText .= "- Click Delay: " . CurrentClickDelay . "ms`n"
-    statsText .= "- Macro Wait Time: " . macroWaitTime . "ms`n`n"
-    statsText .= "Macro Coordinates:`n"
-    for key, coord in coords.OwnProps() {
-        statsText .= "- " . coord.name . ": " . coord.x . ", " . coord.y . "`n"
-    }
-    statsText .= "`nExported: " . FormatDateTime(A_Now)
+    statsText .= "- Macro Wait Time: " . macroWaitTime . "ms`n"
+    statsText .= "- OCR Enabled: " . (ocrEnabled ? "Yes" : "No") . "`n`n"
+    statsText .= "Exported: " . FormatDateTime(A_Now)
     A_Clipboard := statsText
     PlaySound("success")
     MsgBox("Statistics copied to clipboard!", "Export Complete", 64)
+    DebugLog("SYSTEM", "Statistics exported to clipboard", "SUCCESS")
 }
 
 FormatDateTime(dateTime) {
+    ; dateTime is already in YYYYMMDDHHMISS format
     year := SubStr(dateTime, 1, 4)
     month := SubStr(dateTime, 5, 2)
     day := SubStr(dateTime, 7, 2)
@@ -860,15 +1153,17 @@ ToggleKeyPresser(*) {
     if (isKeyPressToggled) {
         keyPressStartTime := A_TickCount
         PlaySound("success")
+        DebugLog("KEYPRESS", "Key presser activated", "SUCCESS")
         if (!isPaused) {
             SetTimer(PressTheKey, -CurrentKeyDelay)
         }
     } else {
         if (keyPressStartTime > 0) {
-            previousActionRuntime := FormatTime((A_TickCount - keyPressStartTime) / 1000)
+            previousActionRuntime := FormatElapsedTime((A_TickCount - keyPressStartTime) / 1000)
         }
         keyPressStartTime := 0
         PlaySound("error")
+        DebugLog("KEYPRESS", "Key presser deactivated", "INFO")
         SetTimer(PressTheKey, 0)
     }
 }
@@ -879,15 +1174,17 @@ ToggleClicker(*) {
     if (isClickerToggled) {
         clickerStartTime := A_TickCount
         PlaySound("success")
+        DebugLog("AUTOCLICK", "Auto-clicker activated", "SUCCESS")
         if (!isPaused) {
             SetTimer(ClickTheMouse, -CurrentClickDelay)
         }
     } else {
         if (clickerStartTime > 0) {
-            previousActionRuntime := FormatTime((A_TickCount - clickerStartTime) / 1000)
+            previousActionRuntime := FormatElapsedTime((A_TickCount - clickerStartTime) / 1000)
         }
         clickerStartTime := 0
         PlaySound("error")
+        DebugLog("AUTOCLICK", "Auto-clicker deactivated", "INFO")
         SetTimer(ClickTheMouse, 0)
     }
 }
@@ -906,6 +1203,7 @@ UpdateSelectedCreatureFromName(creatureName) {
         selectedCreature := creatureInfo.key
         selectedCreaturePage := creatureInfo.page
         UpdateCreatureStatusDisplay()
+        DebugLog("SETTINGS", "Selected creature changed to: " . creatureName . " (Page " . selectedCreaturePage . ")", "INFO")
     }
 }
 
@@ -913,10 +1211,17 @@ ToggleMacro(*) {
     global
     isMacroToggled := !isMacroToggled
     if (isMacroToggled) {
+        if (ocrEnabled && !ocrInitialized) {
+            if (!InitializeOCR()) {
+                isMacroToggled := false
+                return
+            }
+        }
         macroStartTime := A_TickCount
         macroStep := 0
         macroState := "running"
         questState := "seeking"
+        currentSequence := "main"
         MacroActionText.Visible := true
         CreatureStatusText.Visible := true
         QuestDecisionText.Visible := false
@@ -925,12 +1230,13 @@ ToggleMacro(*) {
         }
         UpdateCreatureStatusDisplay()
         PlaySound("success")
+        DebugLog("MACRO", "Quest macro started", "SUCCESS")
         if (!isPaused) {
             SetTimer(RunMacro, -macroWaitTime)
         }
     } else {
         if (macroStartTime > 0) {
-            previousActionRuntime := FormatTime((A_TickCount - macroStartTime) / 1000)
+            previousActionRuntime := FormatElapsedTime((A_TickCount - macroStartTime) / 1000)
         }
         macroStartTime := 0
         macroState := "idle"
@@ -940,6 +1246,7 @@ ToggleMacro(*) {
         QuestDecisionText.Visible := false
         KillCountText.Visible := false
         PlaySound("error")
+        DebugLog("MACRO", "Quest macro stopped", "INFO")
         SetTimer(RunMacro, 0)
     }
 }
@@ -950,69 +1257,133 @@ RunMacro() {
     if (!isMacroToggled || isPaused) {
         return
     }
-    if (questState == "rejecting") {
-        RunRejectionSequence()
-        return
+    
+    ; Determine which sequence we're in
+    local currentActionList := ""
+    switch currentSequence {
+        case "main":
+            currentActionList := macroSequence
+        case "normal":
+            currentActionList := normalQuestSequence
+        case "rejection":
+            currentActionList := rejectionSequence
     }
-    if (macroStep >= macroSequence.Length) {
+    
+    if (macroStep >= currentActionList.Length) {
+        if (currentSequence == "main") {
+            ; Main sequence completed, should have branched by now
+            DebugLog("MACRO", "Main sequence completed without branching", "ERROR")
+            ToggleMacro()
+            return
+        }
         macroStep := 0
         totalMacroRuns++
     }
-    currentAction := macroSequence[macroStep + 1]
-    MacroActionText.Text := "Macro: " . currentAction.description
+    
+    currentAction := currentActionList[macroStep + 1]
+    MacroActionText.Text := currentAction.description
+    DebugLog("MACRO", "Executing: " . currentAction.description, "INFO")
+    
     switch currentAction.action {
-        case "click":
-            coord := coords[currentAction.target]
+        case "click_npc":
+            coord := coords["dtm_npc"]
             if (coord) {
                 HumanizedClick(coord.x, coord.y)
                 totalClicks++
+                DebugLog("MACRO", "Clicked NPC at " . coord.x . "," . coord.y, "SUCCESS")
             }
-        case "navigate_to_creature":
-            NavigateToSelectedCreature()
-        case "select_chosen_creature":
-            SelectChosenCreature()
+        
+        case "check_quest_state":
+            if (ocrEnabled) {
+                questState := CheckQuestState()
+                MacroActionText.Text := "Quest State: " . questState
+            } else {
+                DebugLog("MACRO", "OCR not enabled, assuming no quest", "WARNING")
+                questState := "no_quest"
+            }
+        
+        case "branch_sequence":
+            if (questState == "has_quest") {
+                currentSequence := "rejection"
+                macroStep := -1
+                MacroActionText.Text := "Existing quest detected - rejecting first"
+                DebugLog("MACRO", "Branching to rejection sequence", "INFO")
+            } else {
+                currentSequence := "normal"
+                macroStep := -1
+                MacroActionText.Text := "No quest detected - proceeding normally"
+                DebugLog("MACRO", "Branching to normal sequence", "INFO")
+            }
+        
+        case "ocr_click":
+            if (ocrEnabled) {
+                success := FindAndClickButton(currentAction.text)
+                if (!success) {
+                    MacroActionText.Text := "Failed to find: " . currentAction.text
+                    DebugLog("MACRO", "Failed to find button: " . currentAction.text, "ERROR")
+                }
+            } else {
+                DebugLog("MACRO", "OCR not enabled, skipping button: " . currentAction.text, "WARNING")
+            }
+        
+        case "navigate_to_creature_ocr":
+            if (ocrEnabled) {
+                NavigateToCreatureOCR()
+            } else {
+                DebugLog("MACRO", "OCR not enabled, cannot navigate to creature", "WARNING")
+            }
+        
+        case "select_creature_ocr":
+            if (ocrEnabled) {
+                FindAndClickCreature(selectedCreatureName)
+            } else {
+                DebugLog("MACRO", "OCR not enabled, cannot select creature", "WARNING")
+            }
+        
+        case "check_quest_number":
+            if (ocrEnabled) {
+                detectedQuestNumber := ReadQuestNumber()
+                MacroActionText.Text := "Quest kills: " . detectedQuestNumber
+            } else {
+                DebugLog("MACRO", "OCR not enabled, cannot read quest number", "WARNING")
+                detectedQuestNumber := 0
+            }
+        
+        case "decide_quest":
+            if (detectedQuestNumber > 1000) {
+                MacroActionText.Text := "Good quest! (" . detectedQuestNumber . " kills)"
+                DebugLog("MACRO", "Quest accepted: " . detectedQuestNumber . " kills", "SUCCESS")
+                isMacroToggled := false
+                SetTimer(RunMacro, 0)
+                PlaySound("success")
+                return
+            } else {
+                currentSequence := "rejection"
+                macroStep := -1
+                MacroActionText.Text := "Bad quest (" . detectedQuestNumber . " kills) - rejecting"
+                DebugLog("MACRO", "Quest rejected: " . detectedQuestNumber . " kills", "WARNING")
+            }
+        
+        case "restart_with_normal":
+            currentSequence := "main"
+            macroSequence := [
+                {action: "click_npc", wait: 1500, description: "Click DTM NPC"},
+                {action: "check_quest_state", wait: 500, description: "Checking quest state..."},
+                {action: "branch_sequence", wait: 100, description: "Branching to appropriate sequence"}
+            ]
+            macroStep := -1
+            DebugLog("MACRO", "Restarting macro sequence", "INFO")
+        
         case "wait_for_decision":
             questState := "waiting_for_decision"
             QuestDecisionText.Visible := true
             QuestDecisionText.Text := "Quest Ready! F9=Reject, F10=Keep & Stop"
             MacroActionText.Text := "QUEST DECISION TIME!"
+            DebugLog("MACRO", "Waiting for quest decision", "INFO")
             return
-        case "check_continue_or_reject":
-            macroStep := -1
     }
+    
     macroStep++
-    nextWait := currentAction.HasProp("wait") ? currentAction.wait : macroWaitTime
-    if (isMacroToggled && !isPaused) {
-        SetTimer(RunMacro, -nextWait)
-    }
-}
-
-RunRejectionSequence() {
-    global
-    if (rejectionStep >= rejectionSequence.Length) {
-        questState := "seeking"
-        macroStep := 0
-        rejectionStep := 0
-        QuestDecisionText.Visible := false
-        MacroActionText.Text := "Macro: Restarting..."
-        if (isMacroToggled && !isPaused) {
-            SetTimer(RunMacro, -macroWaitTime)
-        }
-        return
-    }
-    currentAction := rejectionSequence[rejectionStep + 1]
-    MacroActionText.Text := "Rejecting: " . currentAction.description
-    switch currentAction.action {
-        case "click":
-            coord := coords[currentAction.target]
-            if (coord) {
-                HumanizedClick(coord.x, coord.y)
-                totalClicks++
-            }
-        case "restart_same_creature":
-            ; Do nothing, just restart
-    }
-    rejectionStep++
     nextWait := currentAction.HasProp("wait") ? currentAction.wait : macroWaitTime
     if (isMacroToggled && !isPaused) {
         SetTimer(RunMacro, -nextWait)
@@ -1022,43 +1393,18 @@ RunRejectionSequence() {
 RejectCurrentQuest() {
     global
     if (!isMacroToggled || questState != "waiting_for_decision") {
+        DebugLog("MACRO", "Cannot reject - not in decision state", "WARNING")
         return
     }
     questState := "rejecting"
-    rejectionStep := 0
+    currentSequence := "rejection"
+    macroStep := 0
     QuestDecisionText.Text := "Rejecting quest..."
     MacroActionText.Text := "Quest rejected - starting rejection sequence"
     PlaySound("error")
+    DebugLog("MACRO", "Quest rejection initiated", "INFO")
     if (!isPaused) {
         SetTimer(RunMacro, -100)
-    }
-}
-
-NavigateToSelectedCreature() {
-    global
-    targetPage := selectedCreaturePage
-    clicksNeeded := targetPage - 1
-    MacroActionText.Text := "Navigating to " . selectedCreatureName . " (Page " . targetPage . ")"
-    Loop clicksNeeded {
-        pageData := creatureData[A_Index]
-        if (pageData.show_more != "") {
-            coord := coords[pageData.show_more]
-            if (coord) {
-                HumanizedClick(coord.x, coord.y)
-                totalClicks++
-                Sleep(800)
-            }
-        }
-    }
-}
-
-SelectChosenCreature() {
-    global
-    coord := coords[selectedCreature]
-    if (coord) {
-        HumanizedClick(coord.x, coord.y)
-        totalClicks++
-        MacroActionText.Text := "Selected: " . selectedCreatureName
     }
 }
 
@@ -1093,191 +1439,26 @@ HumanizedClick(x, y) {
 UpdateHumanization(CheckboxObj, *) {
     global
     humanizeClicks := CheckboxObj.Value
+    DebugLog("SETTINGS", "Humanization " . (humanizeClicks ? "enabled" : "disabled"), "INFO")
 }
 
-; --- OCR AND TEXT DETECTION FUNCTIONS ---
+; --- OCR TOGGLE ---
 ToggleOCR(CheckboxObj, *) {
     global
     ocrEnabled := CheckboxObj.Value
     if (ocrEnabled) {
-        SetTimer(CheckGameText, 1000)  ; Check every second
+        if (!InitializeOCR()) {
+            CheckboxObj.Value := false
+            ocrEnabled := false
+            return
+        }
         PlaySound("success")
+        DebugLog("OCR", "OCR system enabled", "SUCCESS")
     } else {
-        SetTimer(CheckGameText, 0)
+        ocrInitialized := false
         PlaySound("info")
+        DebugLog("OCR", "OCR system disabled", "INFO")
     }
-}
-
-ToggleAutoContinue(CheckboxObj, *) {
-    global
-    autoClickContinue := CheckboxObj.Value
-}
-
-; Simple OCR using Windows OCR (requires Windows 10/11)
-PerformOCR(x, y, w, h) {
-    ; Create a temporary screenshot of the region
-    tempFile := A_Temp . "\ahk_ocr_temp.png"
-    
-    ; Take screenshot of region
-    RunWait("snippingtool /clip", , "Hide")
-    
-    ; For now, we'll use a simpler approach with ImageSearch
-    ; You can expand this with actual OCR libraries later
-    return ""
-}
-
-; Alternative: Look for specific text patterns using ImageSearch
-CheckForText(region, textImage) {
-    ; Search for pre-captured text images
-    try {
-        ImageSearch(&foundX, &foundY, region.x, region.y, region.x + region.w, region.y + region.h, textImage)
-        return {found: true, x: foundX, y: foundY}
-    } catch {
-        return {found: false, x: 0, y: 0}
-    }
-}
-
-; Simple text detection using pixel patterns
-DetectNumbers(x, y, w, h) {
-    ; This is a simplified number detection
-    ; You would need to capture pixel patterns for each number in your game
-    detectedText := ""
-    
-    ; Example: Check for white text on dark background
-    Loop w {
-        xPos := x + A_Index - 1
-        pixelColor := PixelGetColor(xPos, y)
-        ; Check if pixel is white-ish (text color)
-        if ((pixelColor & 0xFFFFFF) > 0xCCCCCC) {
-            detectedText .= "1" ; Simplified - you'd need pattern matching
-        }
-    }
-    
-    return detectedText
-}
-
-; Check game text periodically
-CheckGameText() {
-    global
-    if (!ocrEnabled) {
-        return
-    }
-    
-    ; Example: Check for "Continue" button
-    if (autoClickContinue) {
-        ; Look for white text that says "Continue"
-        ; You can use ImageSearch with a pre-captured image of "Continue"
-        ; Or use pixel pattern detection
-        
-        ; Simple pixel check for a button
-        pixelColor := PixelGetColor(continueButtonRegion.x, continueButtonRegion.y)
-        if ((pixelColor & 0xFFFFFF) > 0xCCCCCC) { ; If pixel is white-ish
-            HumanizedClick(continueButtonRegion.x + 50, continueButtonRegion.y + 10)
-            totalClicks++
-            Sleep(1000) ; Prevent multiple clicks
-        }
-    }
-    
-    ; Check kill count region
-    if (killCountRegion.w > 0) {
-        ; Simple number detection in kill count area
-        detectedNum := DetectNumbers(killCountRegion.x, killCountRegion.y, killCountRegion.w, killCountRegion.h)
-        if (detectedNum != "") {
-            try {
-                lastDetectedKills := Integer(detectedNum)
-            }
-        }
-    }
-}
-
-; Set region for kill count detection
-SetKillCountRegion(*) {
-    global
-    RegionGui := CreateNoStealFocusGui("Set Detection Region")
-    RegionGui.BackColor := "222222"
-    RegionGui.SetFont("s10 cFFFFFF", "Verdana")
-    RegionGui.Add("Text", "x10 y10 w300 Center", "Select Region Type")
-    
-    killRadio := RegionGui.Add("Radio", "x50 y40 w100", "Kill Count")
-    killRadio.Value := true
-    continueRadio := RegionGui.Add("Radio", "x160 y40 w100", "Continue Button")
-    
-    RegionGui.Add("Text", "x10 y70 w300 Center cYellow", "Click and drag to select the area")
-    RegionGui.Add("Text", "x10 y95 w300 Center cLime", "Press ESC to cancel")
-    startBtn := RegionGui.Add("Button", "x75 y125 w70 h25", "Start")
-    cancelBtn := RegionGui.Add("Button", "x165 y125 w70 h25", "Cancel")
-    
-    StartSelection(*) {
-        global killCountRegion, continueButtonRegion
-        isKillCount := killRadio.Value
-        RegionGui.Destroy()
-        
-        ; Create overlay for selection
-        OverlayGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x20", "Selection")
-        OverlayGui.BackColor := isKillCount ? "Lime" : "Aqua"
-        WinSetTransparent(50, OverlayGui.Hwnd)
-        
-        selecting := false
-        startX := 0
-        startY := 0
-        
-        ; Function to handle left button down
-        OnLButtonDown() {
-            MouseGetPos(&startX, &startY)
-            selecting := true
-        }
-        
-        ; Function to handle left button up
-        OnLButtonUp() {
-            if (selecting) {
-                MouseGetPos(&endX, &endY)
-                targetRegion := isKillCount ? killCountRegion : continueButtonRegion
-                targetRegion.x := Min(startX, endX)
-                targetRegion.y := Min(startY, endY)
-                targetRegion.w := Abs(endX - startX)
-                targetRegion.h := Abs(endY - startY)
-                selecting := false
-                OverlayGui.Destroy()
-                Hotkey("LButton", "Off")
-                Hotkey("LButton Up", "Off")
-                Hotkey("Escape", "Off")
-                PlaySound("success")
-                regionType := isKillCount ? "Kill count" : "Continue button"
-                MsgBox(regionType . " region set!", "Success", 64)
-                RestoreGameFocus()
-            }
-        }
-        
-        ; Function to handle escape key
-        OnEscapeKey() {
-            OverlayGui.Destroy()
-            Hotkey("LButton", "Off")
-            Hotkey("LButton Up", "Off")
-            Hotkey("Escape", "Off")
-            RestoreGameFocus()
-        }
-        
-        ; Hotkeys for selection
-        Hotkey("LButton", OnLButtonDown)
-        Hotkey("LButton Up", OnLButtonUp)
-        Hotkey("Escape", OnEscapeKey)
-        
-        ; Update overlay position
-        UpdateOverlay() {
-            if (selecting) {
-                MouseGetPos(&currentX, &currentY)
-                OverlayGui.Move(Min(startX, currentX), Min(startY, currentY), Abs(currentX - startX), Abs(currentY - startY))
-                OverlayGui.Show("NA")
-            }
-        }
-        
-        SetTimer(UpdateOverlay, 10)
-    }
-    
-    startBtn.OnEvent("Click", StartSelection)
-    cancelBtn.OnEvent("Click", (*) => RegionGui.Destroy())
-    RegionGui.Show("w310 h160")
-    RestoreGameFocus()
 }
 
 ; --- CREATURE SELECTOR GUI ---
@@ -1340,6 +1521,7 @@ ShowCreatureSelector(*) {
     CreatureGuiObj.Show("w250 h" . (y_button + 35))
     WinSetTransparent(CurrentTransparency, CreatureGuiObj.Hwnd)
     RestoreGameFocus()
+    DebugLog("GUI", "Creature selector opened", "INFO")
 }
 
 CloseCreatureGui(*) {
@@ -1352,6 +1534,7 @@ CloseCreatureGui(*) {
     }
     CreatureGuiOpen := false
     CreatureGuiObj := ""
+    DebugLog("GUI", "Creature selector closed", "INFO")
 }
 
 ; --- COORDINATE CONFIGURATION GUI ---
@@ -1375,24 +1558,23 @@ ShowCoordinateConfig(*) {
     y_pos += 25
     ConfigGuiObj.Add("Text", "x10 y" . y_pos . " w380 cGray", "════════════════════════════════════════")
     y_pos += 15
-    for key, coord in coords.OwnProps() {
-        ConfigGuiObj.Add("Text", "x10 y" . y_pos . " w200 cSilver", coord.name . ":")
-        posText := ConfigGuiObj.Add("Text", "x210 y" . y_pos . " w100 cWhite", coord.x . ", " . coord.y)
-        setBtn := ConfigGuiObj.Add("Button", "x320 y" . (y_pos-2) . " w60 h20", "Set")
-        setBtn.OnEvent("Click", SetCoordinate.Bind(key, posText, coord, ConfigGuiObj))
-        y_pos += 25
-        if (key == "continue_3rd" || key == "nevermind_8" || key == "extra_challenge_btn" || key == "continue_reject_4th") {
-            ConfigGuiObj.Add("Text", "x10 y" . y_pos . " w380 cGray", "────────────────────────────────────────")
-            y_pos += 10
-        }
-    }
-    y_pos += 10
+    
+    ; Only show DTM NPC coordinate since we're using OCR for everything else
+    ConfigGuiObj.Add("Text", "x10 y" . y_pos . " w200 cSilver", "DTM NPC Location:")
+    coord := coords["dtm_npc"]
+    posText := ConfigGuiObj.Add("Text", "x210 y" . y_pos . " w100 cWhite", coord.x . ", " . coord.y)
+    setBtn := ConfigGuiObj.Add("Button", "x320 y" . (y_pos-2) . " w60 h20", "Set")
+    setBtn.OnEvent("Click", SetCoordinate.Bind("dtm_npc", posText, coord, ConfigGuiObj))
+    y_pos += 30
+    
+    ConfigGuiObj.Add("Text", "x10 y" . y_pos . " w380 cAqua Center", "All other buttons are detected using OCR")
+    y_pos += 30
+    
     saveBtn := ConfigGuiObj.Add("Button", "x10 y" . y_pos . " w120 h30", "Save & Close")
     saveBtn.OnEvent("Click", CloseConfigGui)
-    testBtn := ConfigGuiObj.Add("Button", "x140 y" . y_pos . " w120 h30", "Test All")
-    testBtn.OnEvent("Click", TestAllCoordinates)
-    quickSetBtn := ConfigGuiObj.Add("Button", "x270 y" . y_pos . " w120 h30", "Quick Setup")
-    quickSetBtn.OnEvent("Click", ShowQuickSetupConfig)
+    testBtn := ConfigGuiObj.Add("Button", "x140 y" . y_pos . " w120 h30", "Test NPC Click")
+    testBtn.OnEvent("Click", TestNPCClick)
+    
     OnMessage(0x201, ConfigGuiDrag)
     
     ConfigGuiDrag(wParam, lParam, msg, hwnd) {
@@ -1405,6 +1587,7 @@ ShowCoordinateConfig(*) {
     ConfigGuiObj.Show("w400 h" . (y_pos + 45))
     WinSetTransparent(CurrentTransparency, ConfigGuiObj.Hwnd)
     RestoreGameFocus()
+    DebugLog("GUI", "Coordinate configuration opened", "INFO")
 }
 
 CloseConfigGui(*) {
@@ -1417,118 +1600,7 @@ CloseConfigGui(*) {
     }
     ConfigGuiOpen := false
     ConfigGuiObj := ""
-}
-
-ShowQuickSetupConfig(*) {
-    global
-    QuickGui := CreateNoStealFocusGui("Quick Setup")
-    QuickGui.BackColor := "222222"
-    QuickGui.SetFont("s10 cFFFFFF", "Verdana")
-    QuickGui.Add("Text", "x0 y0 w400 h25 Center Background333333", " Quick Coordinate Setup ")
-    QuickGui.Add("Text", "x10 y40 w380 Center", "Quick Setup Mode")
-    QuickGui.Add("Text", "x10 y65 w380 Center cYellow", "This will guide you through setting up key coordinates")
-    QuickGui.Add("Text", "x10 y90 w380 Center cSilver", "Press SPACE when hovering over each target")
-    startBtn := QuickGui.Add("Button", "x100 y120 w100 h30", "Start")
-    cancelBtn := QuickGui.Add("Button", "x210 y120 w100 h30", "Cancel")
-    OnMessage(0x201, QuickGuiDrag)
-    
-    QuickGuiDrag(wParam, lParam, msg, hwnd) {
-        if (hwnd = QuickGui.Hwnd) {
-            PostMessage(0xA1, 2)
-        }
-    }
-    
-    StartQuickSetup(*) {
-        QuickGui.Close()
-        essentialCoords := ["dtm_npc", "continue_1st", "continue_2nd", "sure_btn", "continue_3rd", "dragons_btn", "continue_after_creature", "extra_challenge_btn"]
-        currentIndex := 1
-        
-        SetNextCoordinate() {
-            global coords, CurrentTransparency
-            if (currentIndex > essentialCoords.Length) {
-                CompletionGui := CreateNoStealFocusGui("Complete")
-                CompletionGui.BackColor := "222222"
-                CompletionGui.SetFont("s11 cFFFFFF", "Verdana")
-                CompletionGui.Add("Text", "x0 y0 w300 h25 Center Background333333", " Setup Complete ")
-                CompletionGui.Add("Text", "x10 y40 w280 Center cLime", "Quick setup completed successfully!")
-                okBtn := CompletionGui.Add("Button", "x115 y80 w70 h25", "OK")
-                okBtn.OnEvent("Click", (*) => CompletionGui.Close())
-                CompletionGui.Show("w300 h115")
-                WinSetTransparent(CurrentTransparency, CompletionGui.Hwnd)
-                PlaySound("success")
-                RestoreGameFocus()
-                return
-            }
-            key := essentialCoords[currentIndex]
-            coord := coords[key]
-            SetupGui := CreateNoStealFocusGui("Quick Setup")
-            SetupGui.BackColor := "1a1a1a"
-            SetupGui.SetFont("s10 cFFFFFF", "Verdana")
-            SetupGui.Add("Text", "x0 y0 w400 h25 Center Background0x0a0a0a", " Quick Setup - Step " . currentIndex . " of " . essentialCoords.Length . " ")
-            SetupGui.Add("Text", "x10 y40 w380 Center cLime", "Setting: " . coord.name)
-            SetupGui.Add("Text", "x10 y70 w380 Center", "Hover and press SPACE")
-            CoordText := SetupGui.Add("Text", "x10 y100 w380 Center cAqua", "Position: 0, 0")
-            CoordText.SetFont("s11 Bold")
-            SetupGui.Add("Text", "x10 y130 w380 Center cGray", "Press ESC to skip this coordinate")
-            SetupGui.Show("w400 h160")
-            WinSetTransparent(230, SetupGui.Hwnd)
-            RestoreGameFocus()
-            OnMessage(0x201, SetupGuiDrag)
-            
-            SetupGuiDrag(wParam, lParam, msg, hwnd) {
-                if (hwnd = SetupGui.Hwnd) {
-                    PostMessage(0xA1, 2)
-                }
-            }
-            
-            UpdatePos() {
-                try {
-                    if WinExist("Quick Setup - Step") {
-                        MouseGetPos(&mx, &my)
-                        CoordText.Text := "Position: " . mx . ", " . my
-                    }
-                }
-            }
-            
-            SetTimer(UpdatePos, 50)
-            
-            SpaceSet(*) {
-                MouseGetPos(&captureX, &captureY)
-                coord.x := captureX
-                coord.y := captureY
-                PlaySound("info")
-                CoordText.SetFont("cYellow")  ; Changed from Opt("cYellow")
-                CoordText.Text := "CAPTURED: " . captureX . ", " . captureY
-                Sleep(500)
-                Hotkey("Space", "Off")
-                Hotkey("Escape", "Off")
-                SetTimer(UpdatePos, 0)
-                SetupGui.Close()
-                currentIndex++
-                SetNextCoordinate()
-            }
-            
-            EscSkip(*) {
-                Hotkey("Space", "Off")
-                Hotkey("Escape", "Off")
-                SetTimer(UpdatePos, 0)
-                SetupGui.Close()
-                currentIndex++
-                SetNextCoordinate()
-            }
-            
-            Hotkey("Space", SpaceSet)
-            Hotkey("Escape", EscSkip)
-        }
-        
-        SetNextCoordinate()
-    }
-    
-    startBtn.OnEvent("Click", StartQuickSetup)
-    cancelBtn.OnEvent("Click", (*) => QuickGui.Close())
-    QuickGui.Show("w400 h165")
-    WinSetTransparent(CurrentTransparency, QuickGui.Hwnd)
-    RestoreGameFocus()
+    DebugLog("GUI", "Coordinate configuration closed", "INFO")
 }
 
 SetCoordinate(coordKey, textControl, coordObj, parentGui, *) {
@@ -1557,20 +1629,20 @@ SetCoordinate(coordKey, textControl, coordObj, parentGui, *) {
     SetTimer(UpdateMousePos, 50)
     savedCoords := {x: 0, y: 0, set: false}
     
-	SpaceCapture(*) {
-		MouseGetPos(&captureX, &captureY)
-		savedCoords.x := captureX
-		savedCoords.y := captureY
-		savedCoords.set := true
-		CoordDisplay.SetFont("cYellow")  ; Changed from Opt("cYellow")
-		CoordDisplay.Text := "CAPTURED: " . captureX . ", " . captureY
-		PlaySound("success")
-		Sleep(500)
-		Hotkey("Space", "Off")
-		Hotkey("Escape", "Off")
-		SetTimer(UpdateMousePos, 0)
-		InstructGui.Close()
-}
+    SpaceCapture(*) {
+        MouseGetPos(&captureX, &captureY)
+        savedCoords.x := captureX
+        savedCoords.y := captureY
+        savedCoords.set := true
+        CoordDisplay.SetFont("cYellow")
+        CoordDisplay.Text := "CAPTURED: " . captureX . ", " . captureY
+        PlaySound("success")
+        Sleep(500)
+        Hotkey("Space", "Off")
+        Hotkey("Escape", "Off")
+        SetTimer(UpdateMousePos, 0)
+        InstructGui.Close()
+    }
     
     EscapeCancel(*) {
         Hotkey("Space", "Off")
@@ -1592,34 +1664,22 @@ SetCoordinate(coordKey, textControl, coordObj, parentGui, *) {
         coordObj.x := savedCoords.x
         coordObj.y := savedCoords.y
         textControl.Text := savedCoords.x . ", " . savedCoords.y
+        DebugLog("SETTINGS", "Coordinate set: " . coordKey . " = " . savedCoords.x . ", " . savedCoords.y, "SUCCESS")
     }
 }
 
-TestAllCoordinates(*) {
-    global coords
-    for key, coord in coords.OwnProps() {
-        MouseMove(coord.x, coord.y, 2)
-        Sleep(500)
-    }
+TestNPCClick(*) {
+    coord := coords["dtm_npc"]
+    MouseMove(coord.x, coord.y, 10)
     PlaySound("success")
+    DebugLog("TEST", "Moved to NPC location: " . coord.x . ", " . coord.y, "INFO")
 }
 
-; --- TEXT DETECTION SETUP GUIDE ---
-; To use text detection features:
-; 1. Enable OCR in Options menu
-; 2. Set regions where you want to detect text (kill count, continue buttons, etc.)
-; 3. For better accuracy, capture images of the text you want to detect
-;    and save them as .png files in the script directory
-;
-; For ImageSearch method:
-; - Capture screenshots of "Continue" buttons, quest text, etc.
-; - Save as: continue_button.png, accept_quest.png, etc.
-; - The script will search for these images in the specified regions
-;
-; For Pixel Detection method:
-; - Identify the text color in your game (usually white or yellow)
-; - The script checks for pixel patterns matching text
-;
-; Advanced OCR:
-; - You can integrate Windows OCR API or Tesseract OCR
-; - See AutoHotkey community forums for OCR library examples
+; --- CLEANUP AND EXIT ---
+ExitScript(*) {
+    DebugLog("SYSTEM", "Script exiting...", "WARNING")
+    if (IsObject(debugGui)) {
+        debugGui.Destroy()
+    }
+    ExitApp
+}
