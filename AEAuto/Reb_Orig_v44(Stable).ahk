@@ -674,28 +674,23 @@ RestoreGameFocus() {
 
 ; Enhanced GUI creation for popups that won't minimize games
 CreateNoStealFocusGui(title) {
-    global gameTitle
-    newGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x08000000", title)
+    ; Create GUI with special flags to prevent focus stealing
+    newGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x08000020 +E0x00000008", title)
+    ; E0x08000020 = WS_EX_NOACTIVATE (prevents activation)
+    ; E0x00000008 = WS_EX_TOPMOST (keeps on top)
     
-    gameHwnd := WinExist(gameTitle)
-    if (!gameHwnd) {
-        gameHwnd := WinExist("A")
-    }
-    
-    if (gameHwnd) {
-        try {
-            if (A_PtrSize = 8) {
-                DllCall("SetWindowLongPtr", "Ptr", newGui.Hwnd, "Int", -8, "Ptr", gameHwnd)
-            } else {
-                DllCall("SetWindowLong", "Ptr", newGui.Hwnd, "Int", -8, "Ptr", gameHwnd)
-            }
-        }
-    }
+    ; Prevent the GUI from appearing in Alt-Tab
+    newGui.Opt("+Owner" . MyGui.Hwnd)
     
     return newGui
 }
 
+; Store the main GUI hwnd for hotkey context
+global MainGuiHwnd := MyGui.Hwnd
+
 ; --- HOTKEY DEFINITIONS ---
+; Only activate hotkeys when the main tool window is active or exists
+#HotIf WinExist("ahk_id " . MainGuiHwnd)
 PgUp::ToggleKeyPresser()
 PgDn::ToggleClicker()
 F10::ToggleMacro()
@@ -705,11 +700,13 @@ End::TogglePlayback()
 MButton::F1ClickMacro()
 ~Enter::HandleEnterKey()
 F11::ShowCoordinateConfig()
+#HotIf
+
+; F12 should work globally to exit the script
 F12::ExitApp
-F8::ToggleDebugWindow()
 
 ; Context-sensitive hotkey for closing sub-GUIs
-#HotIf WinActive("Select Creature") or WinActive("Configure Macro Coordinates")
+#HotIf WinActive("Select Creature") or WinActive("Configure Macro Coordinates") or WinActive("Set Detection Region") or WinActive("Quick Setup") or WinActive("Set Coordinate")
 Escape:: {
     global
     if (CreatureGuiOpen) {
@@ -718,6 +715,8 @@ Escape:: {
     if (ConfigGuiOpen) {
         CloseConfigGui()
     }
+    ; Close any other open dialogs
+    WinClose("A")
 }
 #HotIf
 
